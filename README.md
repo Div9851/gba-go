@@ -1,5 +1,7 @@
 # gba-go
 
+[![Tests](https://github.com/Div9851/gba-go/actions/workflows/test.yml/badge.svg)](https://github.com/Div9851/gba-go/actions/workflows/test.yml)
+
 ## Overview
 
 A Game Boy Advance (GBA) emulator developed as a hobby project using Go and Ebitengine.
