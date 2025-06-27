@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	"github.com/Div9851/gba-go/pkg/emulator"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
@@ -15,9 +16,12 @@ const (
 	scaleFactor = 3
 )
 
-type Game struct{}
+type Game struct {
+	emulator *emulator.GBA
+}
 
 func (g *Game) Update() error {
+	g.emulator.Update()
 	return nil
 }
 
@@ -30,9 +34,16 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func main() {
+	gba := emulator.NewGBA()
+
+	game := &Game{
+		emulator: gba,
+	}
+
 	ebiten.SetWindowSize(screenWidth*scaleFactor, screenHeight*scaleFactor)
 	ebiten.SetWindowTitle("GBA Emulator")
-	if err := ebiten.RunGame(&Game{}); err != nil {
+
+	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
 }
