@@ -446,7 +446,7 @@ func Shift(value uint32, op int, amount uint, oldCarry bool, isRegisterShift boo
 			carry = (value>>(amount-1))&1 != 0
 		}
 	case 0x2: // ASR
-		if amount == 0 {
+		if amount == 0 || amount >= 32 {
 			if (value & 0x80000000) != 0 {
 				result = 0xFFFFFFFF
 				carry = true

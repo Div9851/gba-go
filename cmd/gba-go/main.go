@@ -11,6 +11,7 @@ import (
 
 	"github.com/Div9851/gba-go/pkg/emulator"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 const (
@@ -23,10 +24,16 @@ const (
 
 type Game struct {
 	emulator *emulator.GBA
+	keys     []ebiten.Key
 }
 
 func (g *Game) Update() error {
-	g.emulator.Update()
+	g.keys = inpututil.AppendPressedKeys(g.keys[:0])
+	var keys []string
+	for _, key := range g.keys {
+		keys = append(keys, key.String())
+	}
+	g.emulator.Update(keys)
 	return nil
 }
 

@@ -2,6 +2,7 @@ package ioreg
 
 import (
 	"github.com/Div9851/gba-go/internal/dma"
+	"github.com/Div9851/gba-go/internal/input"
 	"github.com/Div9851/gba-go/internal/irq"
 	"github.com/Div9851/gba-go/internal/ppu"
 )
@@ -12,14 +13,16 @@ type IOReg struct {
 	IRQ          *irq.IRQ
 	PPU          *ppu.PPU
 	DMA          [4]*dma.Channel
+	Input        *input.Input
 	shouldCommit bool
 }
 
-func NewIOReg(irq *irq.IRQ, ppu *ppu.PPU, dma [4]*dma.Channel) *IOReg {
+func NewIOReg(irq *irq.IRQ, ppu *ppu.PPU, dma [4]*dma.Channel, input *input.Input) *IOReg {
 	return &IOReg{
-		IRQ: irq,
-		PPU: ppu,
-		DMA: dma,
+		IRQ:   irq,
+		PPU:   ppu,
+		DMA:   dma,
+		Input: input,
 	}
 }
 
@@ -46,6 +49,12 @@ func (r *IOReg) Read8(addr uint32) byte {
 	case 0xDE <= addr && addr < 0xE0: // DMA3CNT_H
 		b := (addr - 0xDE) * 8
 		return byte((r.DMA[3].CNT_H >> b) & 0xFF)
+	case 0x130 <= addr && addr < 0x132: // KEYINPUT
+		b := (addr - 0x130) * 8
+		return byte((r.Input.KEYINPUT >> b) & 0xFF)
+	case 0x132 <= addr && addr < 0x134: // KEYCNT
+		b := (addr - 0x132) * 8
+		return byte((r.Input.KEYCNT >> b) & 0xFF)
 	case 0x200 <= addr && addr < 0x202: // IE
 		b := (addr - 0x200) * 8
 		return byte((r.IRQ.IE >> b) & 0xFF)
@@ -188,6 +197,10 @@ func (r *IOReg) Commit() {
 	if mask := r.getMask16(0xDE); mask != 0 { // DMA3CNT_H
 		value := r.readBuffer16(0xDE) & mask
 		r.DMA[3].SetCNT_H((r.DMA[3].CNT_H & ^mask) | value)
+	}
+	if mask := r.getMask16(0x132); mask != 0 { // KEYCNT
+		value := r.readBuffer16(0x132) & mask
+		r.Input.KEYCNT = (r.Input.KEYCNT & ^mask) | value
 	}
 	if mask := r.getMask16(0x200); mask != 0 { // IE
 		value := r.readBuffer16(0x200) & mask
