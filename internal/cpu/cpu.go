@@ -53,10 +53,10 @@ type CPU struct {
 func NewCPU(bus *bus.Bus, irq *irq.IRQ) *CPU {
 	reg := [16]uint32{}
 	reg[13] = 0x03007F00
-	reg[14] = 0x08000000
 	reg[15] = 0x08000000
 	bankedReg := [5][16]uint32{}
-	bankedReg[2][13] = 0x03007F00
+	bankedReg[1][13] = 0x03007FA0
+	bankedReg[2][13] = 0x03007FE0
 	return &CPU{
 		reg:       reg,
 		bankedReg: bankedReg,
@@ -248,46 +248,41 @@ func CalculateOverflow(op1, op2, result uint32, isSubtraction bool) bool {
 }
 
 func (cpu *CPU) HandleException(except int) {
-	pc := cpu.ReadReg(15) // PC+nn
-	var mode int
-	var addr uint32
+	pc := cpu.ReadReg(15)
+	oldCPSR := cpu.CPSR
+	thumb := (oldCPSR & BitT) != 0
+
+	var (
+		mode   int
+		vector uint32
+		lr     uint32
+	)
+
 	switch except {
-	case ExceptReset:
-		mode = ModeSVC
-		addr = 0x00
-	case ExceptUndefined:
-		mode = ModeUND
-		addr = 0x04
 	case ExceptSoftwareInterrupt:
 		mode = ModeSVC
-		addr = 0x08
-	case ExceptPrefetchAbort:
-		mode = ModeABT
-		addr = 0x0C
-	case ExceptDataAbort:
-		mode = ModeABT
-		addr = 0x10
-	case ExceptAddressExceeds26bit:
-		mode = ModeSVC
-		addr = 0x14
+		vector = 0x08
+		if thumb {
+			lr = pc - 2
+		} else {
+			lr = pc - 4
+		}
 	case ExceptNormalInterrupt:
 		mode = ModeIRQ
-		addr = 0x18
-	case ExceptFastInterrupt:
-		mode = ModeFIQ
-		addr = 0x1C
+		vector = 0x18
+		if thumb {
+			lr = pc
+		} else {
+			lr = pc - 4
+		}
 	}
-	cpsr := cpu.CPSR
-	cpu.CPSR = (cpu.CPSR & ^BitM) | uint32(mode) // set mode
-	cpu.CPSR |= BitI                             // IRQs diabled
-	cpu.WriteSPSR(mode, cpsr)
-	if cpu.IsThumb() {
-		cpu.WriteReg(14, (pc-2)|1) // PC+2
-	} else {
-		cpu.WriteReg(14, pc-4)
-	}
+
+	cpu.CPSR = (oldCPSR & ^BitM) | uint32(mode) // set mode
+	cpu.CPSR |= BitI                            // IRQs diabled
+	cpu.WriteSPSR(mode, oldCPSR)
+	cpu.WriteReg(14, lr)
 	cpu.CPSR &= ^BitT // force ARM state
-	cpu.WriteReg(15, addr)
+	cpu.WriteReg(15, vector)
 }
 
 func (cpu *CPU) ResetPipeline() {

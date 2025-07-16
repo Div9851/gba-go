@@ -19,18 +19,13 @@ func NewBus() *Bus {
 	return &Bus{}
 }
 
-func (bus *Bus) Setup(gamepak *gamepak.GamePak, ppu *ppu.PPU, ioReg *ioreg.IOReg) {
-	bus.GamePak = gamepak
+func (bus *Bus) Setup(ppu *ppu.PPU, ioReg *ioreg.IOReg) {
 	bus.PPU = ppu
 	bus.IOReg = ioReg
 }
 
 func (bus *Bus) LoadBIOS(data []byte) {
 	copy(bus.BIOS[:], data)
-}
-
-func (bus *Bus) LoadROM(data []byte) {
-	copy(bus.GamePak.ROM[:], data)
 }
 
 func (bus *Bus) write8(addr uint32, val byte) {
@@ -56,6 +51,27 @@ func (bus *Bus) write8(addr uint32, val byte) {
 }
 
 func (bus *Bus) Write8(addr uint32, val byte) {
+	if 0x6000000 <= addr && addr < 0x7000000 {
+		offset := (addr - 0x6000000) & 0x1FFFF
+		if offset >= 0x18000 {
+			offset -= 0x8000
+		}
+		bitmapMode := (bus.PPU.DISPCNT & 7) >= 3
+		if (!bitmapMode && offset < 0x10000) || (bitmapMode && offset < 0x14000) {
+			addr &= 0xFFFFFFFE
+			bus.write8(addr, val)
+			bus.write8(addr+1, val)
+		}
+		return
+	}
+	if 0x5000000 <= addr && addr < 0x6000000 {
+		addr &= 0xFFFFFFFE
+		bus.write8(addr, val)
+		bus.write8(addr+1, val)
+	}
+	if 0x7000000 <= addr && addr < 0x8000000 {
+		return
+	}
 	bus.write8(addr, val)
 	bus.IOReg.Commit()
 }

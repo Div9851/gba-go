@@ -5,95 +5,176 @@ import (
 	"github.com/Div9851/gba-go/internal/memory"
 )
 
+const (
+	None = iota
+	Immediate
+	VBlank
+	HBlank
+)
+
+const (
+	Idle = iota
+	Wait
+	Triggered
+	Active
+)
+
 type Channel struct {
 	index  int
 	SAD    uint32
 	DAD    uint32
 	CNT_L  uint16
 	CNT_H  uint16
-	memory memory.Memory
-	irq    *irq.IRQ
+	Memory memory.Memory
+	IRQ    *irq.IRQ
+
+	srcAddr    uint32
+	dstAddr    uint32
+	wordSize   uint32
+	wordCount  int
+	srcAddrCnt int
+	dstAddrCnt int
+	repeat     bool
+	triggerIRQ bool
+	cycles     int
+	Cond       int
+	Status     int
 }
 
 func NewChannel(index int, memory memory.Memory, irq *irq.IRQ) *Channel {
 	return &Channel{
 		index:  index,
-		memory: memory,
-		irq:    irq,
+		Memory: memory,
+		IRQ:    irq,
 	}
 }
 
 func (ch *Channel) SetCNT_H(value uint16) {
+	oldValue := ch.CNT_H
 	ch.CNT_H = value
+	if (oldValue&(1<<15)) == 0 && (value&(1<<15)) != 0 {
+		ch.Load()
+		ch.cycles = 0
+		ch.Status = Wait
+	} else if (oldValue&(1<<15)) != 0 && (value&(1<<15)) == 0 {
+		ch.cycles = 0
+		ch.Status = Idle
+	}
 }
 
 func (ch *Channel) Step() {
-	if (ch.CNT_H & (1 << 15)) != 0 {
-		ch.Trigger()
+	ch.cycles++
+
+	if ch.cycles >= 2*ch.wordCount+2 {
+		for i := 0; i < ch.wordCount; i++ {
+			if ch.wordSize == 2 {
+				value := ch.Memory.Read16(ch.srcAddr)
+				ch.Memory.Write16(ch.dstAddr, value)
+			} else {
+				value := ch.Memory.Read32(ch.srcAddr)
+				ch.Memory.Write32(ch.dstAddr, value)
+			}
+			switch ch.srcAddrCnt {
+			case 0: // Increment
+				ch.srcAddr += ch.wordSize
+			case 1: // Decrement
+				ch.srcAddr -= ch.wordSize
+			}
+			switch ch.dstAddrCnt {
+			case 0:
+				ch.dstAddr += ch.wordSize
+			case 1: // Decrement
+				ch.dstAddr -= ch.wordSize
+			case 3: // Increment + Reload
+				ch.dstAddr += ch.wordSize
+			}
+		}
+
+		if ch.triggerIRQ {
+			ch.IRQ.IF |= 1 << (8 + ch.index)
+		}
+
+		if !ch.repeat { // not repeat
+			ch.CNT_H &= 0x7FFF
+			ch.cycles = 0
+			ch.Status = Idle
+		} else {
+			ch.LoadWordCount()
+			if ch.dstAddrCnt == 3 {
+				ch.LoadDAD()
+			}
+			ch.cycles = 0
+			ch.Status = Wait
+		}
+	}
+}
+
+func (ch *Channel) LoadSAD() {
+	ch.srcAddr = ch.SAD
+	if ch.index == 0 {
+		ch.srcAddr &= 0x7FFFFFF
+	} else {
+		ch.srcAddr &= 0xFFFFFFF
+	}
+	if ch.wordSize == 2 {
+		ch.srcAddr &= 0xFFFFFFFE
+	} else {
+		ch.srcAddr &= 0xFFFFFFFC
+	}
+}
+
+func (ch *Channel) LoadDAD() {
+	ch.dstAddr = ch.DAD
+	if ch.index < 3 {
+		ch.dstAddr &= 0x7FFFFFF
+	} else {
+		ch.dstAddr &= 0xFFFFFFF
+	}
+	if ch.wordSize == 2 {
+		ch.dstAddr &= 0xFFFFFFFE
+	} else {
+		ch.dstAddr &= 0xFFFFFFFC
+	}
+}
+
+func (ch *Channel) LoadWordCount() {
+	ch.wordCount = int(ch.CNT_L)
+	if ch.wordCount == 0 {
+		if ch.index < 3 {
+			ch.wordCount = 0x4000
+		} else {
+			ch.wordCount = 0x10000
+		}
+	}
+}
+
+func (ch *Channel) Load() {
+	switch (ch.CNT_H >> 12) & 0x3 {
+	case 0x0:
+		ch.Cond = Immediate
+	case 0x1:
+		ch.Cond = VBlank
+	case 0x2:
+		ch.Cond = HBlank
 	}
 
+	if (ch.CNT_H & (1 << 10)) == 0 {
+		ch.wordSize = 2
+	} else {
+		ch.wordSize = 4
+	}
+
+	ch.LoadSAD()
+	ch.LoadDAD()
+
+	ch.LoadWordCount()
+
+	ch.srcAddrCnt = int((ch.CNT_H >> 7) & 0x3)
+	ch.dstAddrCnt = int((ch.CNT_H >> 5) & 0x3)
+	ch.repeat = (ch.CNT_H & (1 << 9)) != 0
+	ch.triggerIRQ = (ch.CNT_H & (1 << 14)) != 0
 }
 
 func (ch *Channel) Trigger() {
-	src := ch.SAD
-	if ch.index == 0 {
-		src &= 0x7FFFFFF
-	} else {
-		src &= 0xFFFFFFF
-	}
-
-	dst := ch.DAD
-	if ch.index < 3 {
-		dst &= 0x7FFFFFF
-	} else {
-		dst &= 0xFFFFFFF
-	}
-
-	var wordSize uint32
-	if (ch.CNT_H & (1 << 10)) == 0 {
-		wordSize = 2
-	} else {
-		wordSize = 4
-	}
-
-	wordCount := int(ch.CNT_L)
-	if wordCount == 0 {
-		if ch.index < 3 {
-			wordCount = 0x4000
-		} else {
-			wordCount = 0x10000
-		}
-	}
-
-	for i := 0; i < wordCount; i++ {
-		if wordSize == 2 {
-			value := ch.memory.Read16(src)
-			ch.memory.Write16(dst, value)
-		} else {
-			value := ch.memory.Read32(src)
-			ch.memory.Write32(dst, value)
-		}
-		// Source Addr Control
-		switch (ch.CNT_H >> 7) & 0x3 {
-		case 0: // Increment
-			src += wordSize
-		case 1: // Decrement
-			src -= wordSize
-		}
-		// Dest Addr Control
-		switch (ch.CNT_H >> 5) & 0x3 {
-		case 0: // Increment
-			dst += wordSize
-		case 1: // Decrement
-			dst -= wordSize
-		}
-	}
-
-	if (ch.CNT_H & (1 << 9)) == 0 { // not repeat
-		ch.CNT_H &= 0x7FFF
-	}
-
-	if (ch.CNT_H & (1 << 14)) != 0 {
-		ch.irq.IF |= 1 << (8 + ch.index)
-	}
+	ch.Status = Triggered
 }

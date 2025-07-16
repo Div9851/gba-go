@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -19,7 +20,7 @@ const (
 	screenWidth  = 240
 	screenHeight = 160
 	// Scale factor for display
-	scaleFactor = 3
+	scaleFactor = 2
 )
 
 type Game struct {
@@ -73,6 +74,7 @@ func main() {
 	if *debug {
 		stepCount := 0
 		sc := bufio.NewScanner(os.Stdin)
+		breakpoints := []uint32{}
 		for {
 			fmt.Printf("step %d\n", stepCount)
 			opcode := gba.CPU.Pipeline[1]
@@ -85,6 +87,23 @@ func main() {
 			sc.Scan()
 			inputs := strings.Split(sc.Text(), " ")
 			switch inputs[0] {
+			case "break":
+				addr, _ := strconv.ParseInt(inputs[1], 16, 32)
+				breakpoints = append(breakpoints, uint32(addr))
+			case "continue":
+				for {
+					pc := gba.CPU.ReadReg(15)
+					if gba.CPU.IsThumb() {
+						pc -= 4
+					} else {
+						pc -= 8
+					}
+					if slices.Contains(breakpoints, pc) {
+						break
+					}
+					gba.Step()
+					stepCount++
+				}
 			case "nextN":
 				nn, _ := strconv.Atoi(inputs[1])
 				for i := 0; i < nn; i++ {
@@ -96,7 +115,7 @@ func main() {
 				stepCount++
 			}
 
-			for i := 0; i < 15; i++ {
+			for i := 0; i <= 15; i++ {
 				fmt.Printf("R%d: %08X ", i, gba.CPU.ReadReg(i))
 			}
 			fmt.Printf("CPSR: %08X\n\n", gba.CPU.CPSR)
