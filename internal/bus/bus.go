@@ -46,7 +46,7 @@ func (bus *Bus) write8(addr uint32, val byte) {
 	} else if 0x7000000 <= addr && addr < 0x8000000 {
 		bus.PPU.OAM[(addr-0x7000000)&0x3FF] = val
 	} else if 0xE000000 <= addr && addr < 0xE010000 {
-		bus.GamePak.SRAM[addr-0xE000000] = val
+		bus.GamePak.Backup.Write8(addr-0xE000000, val)
 	}
 }
 
@@ -98,7 +98,7 @@ func (bus *Bus) Read8(addr uint32) byte {
 	} else if 0x8000000 <= addr && addr < 0xE000000 {
 		return bus.GamePak.ROM[(addr-0x8000000)&0x1FFFFFF]
 	} else if 0xE000000 <= addr && addr < 0xE010000 {
-		return bus.GamePak.SRAM[addr-0xE000000]
+		return bus.GamePak.Backup.Read8(addr - 0xE000000)
 	}
 	return 0
 }

@@ -221,6 +221,38 @@ func (r *IOReg) Commit() {
 		value := r.readBuffer16(0x1E) & mask
 		r.PPU.BGVOFS[3] = (r.PPU.BGVOFS[3] & ^mask) | value
 	}
+	if mask := r.getMask16(0x28); mask != 0 { // BG2X_L
+		value := r.readBuffer16(0x28) & mask
+		r.PPU.BGX_L[2] = value
+	}
+	if mask := r.getMask16(0x2A); mask != 0 { // BG2X_H
+		value := r.readBuffer16(0x2A) & mask
+		r.PPU.BGX_H[2] = value
+	}
+	if mask := r.getMask16(0x2C); mask != 0 { // BG2Y_L
+		value := r.readBuffer16(0x2C) & mask
+		r.PPU.BGY_L[2] = value
+	}
+	if mask := r.getMask16(0x2E); mask != 0 { // BG2Y_H
+		value := r.readBuffer16(0x2E) & mask
+		r.PPU.BGY_H[2] = value
+	}
+	if mask := r.getMask16(0x20); mask != 0 { // BG2PA
+		value := r.readBuffer16(0x20) & mask
+		r.PPU.BG_PA[2] = value
+	}
+	if mask := r.getMask16(0x22); mask != 0 { // BG2PB
+		value := r.readBuffer16(0x22) & mask
+		r.PPU.BG_PB[2] = value
+	}
+	if mask := r.getMask16(0x24); mask != 0 { // BG2PC
+		value := r.readBuffer16(0x24) & mask
+		r.PPU.BG_PC[2] = value
+	}
+	if mask := r.getMask16(0x26); mask != 0 { // BG2PD
+		value := r.readBuffer16(0x26) & mask
+		r.PPU.BG_PD[2] = value
+	}
 	if mask := r.getMask32(0xB0); mask != 0 { // DMA0SAD
 		value := r.readBuffer32(0xB0) & mask
 		r.DMA[0].SAD = (r.DMA[0].SAD & ^mask) | value
