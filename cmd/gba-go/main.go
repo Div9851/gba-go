@@ -2,16 +2,20 @@ package main
 
 import (
 	"bufio"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Div9851/gba-go/pkg/emulator"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
@@ -44,6 +48,27 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenWidth, screenHeight
+}
+
+type Streamer struct {
+	ch chan float32
+}
+
+func NewStreamer(ch chan float32) *Streamer {
+	return &Streamer{
+		ch: ch,
+	}
+}
+
+func (s *Streamer) Read(p []byte) (n int, err error) {
+	for n = 0; n+4 <= len(p); n += 4 {
+		select {
+		case sample := <-s.ch:
+			binary.LittleEndian.PutUint32(p[n:], math.Float32bits(sample))
+		default:
+		}
+	}
+	return
 }
 
 func main() {
@@ -122,13 +147,21 @@ func main() {
 		}
 	}
 
+	ch := make(chan float32, 10000)
+	streamer := NewStreamer(ch)
+	gba.APU.StreamerCh = ch
+
+	audioContext := audio.NewContext(32768)
+	audioPlayer, _ := audioContext.NewPlayerF32(streamer)
+	audioPlayer.SetBufferSize(time.Millisecond * 60)
+	audioPlayer.Play()
+
 	game := &Game{
 		emulator: gba,
 	}
 
 	ebiten.SetWindowSize(screenWidth*scaleFactor, screenHeight*scaleFactor)
 	ebiten.SetWindowTitle("GBA Emulator")
-
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}

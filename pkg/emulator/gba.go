@@ -1,6 +1,7 @@
 package emulator
 
 import (
+	"github.com/Div9851/gba-go/internal/apu"
 	"github.com/Div9851/gba-go/internal/bus"
 	"github.com/Div9851/gba-go/internal/cpu"
 	"github.com/Div9851/gba-go/internal/dma"
@@ -20,6 +21,7 @@ type GBA struct {
 	CPU    *cpu.CPU
 	Bus    *bus.Bus
 	PPU    *ppu.PPU
+	APU    *apu.APU
 	DMA    [4]*dma.Channel
 	Input  *input.Input
 	Timers [4]*timer.Timer
@@ -36,15 +38,16 @@ func NewGBA() *GBA {
 		dmaChannels[i] = dma.NewChannel(i, bus, irq)
 	}
 	ppu := ppu.NewPPU(irq, dmaChannels)
+	apu := apu.NewAPU(dmaChannels)
 	input := input.NewInput(irq)
 	timers := [4]*timer.Timer{}
 	for i := 3; i >= 0; i-- {
-		timers[i] = timer.NewTimer(i, irq)
+		timers[i] = timer.NewTimer(i, irq, apu)
 		if i < 3 {
 			timers[i].Next = timers[i+1]
 		}
 	}
-	ioReg := ioreg.NewIOReg(irq, ppu, dmaChannels, input, timers)
+	ioReg := ioreg.NewIOReg(irq, ppu, apu, dmaChannels, input, timers)
 
 	bus.Setup(ppu, ioReg)
 
@@ -52,6 +55,7 @@ func NewGBA() *GBA {
 		CPU:     cpu,
 		Bus:     bus,
 		PPU:     ppu,
+		APU:     apu,
 		DMA:     dmaChannels,
 		Input:   input,
 		Timers:  timers,
@@ -103,6 +107,7 @@ func (gba *GBA) Step() {
 		gba.DMA[activeDMAChannel].Step()
 	}
 	gba.PPU.Step()
+	gba.APU.Step()
 	for i := 0; i < 4; i++ {
 		gba.Timers[i].Step()
 	}

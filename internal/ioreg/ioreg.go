@@ -1,6 +1,7 @@
 package ioreg
 
 import (
+	"github.com/Div9851/gba-go/internal/apu"
 	"github.com/Div9851/gba-go/internal/dma"
 	"github.com/Div9851/gba-go/internal/input"
 	"github.com/Div9851/gba-go/internal/irq"
@@ -13,16 +14,18 @@ type IOReg struct {
 	changed      [0x400]bool
 	IRQ          *irq.IRQ
 	PPU          *ppu.PPU
+	APU          *apu.APU
 	DMA          [4]*dma.Channel
 	Input        *input.Input
 	Timers       [4]*timer.Timer
 	shouldCommit bool
 }
 
-func NewIOReg(irq *irq.IRQ, ppu *ppu.PPU, dma [4]*dma.Channel, input *input.Input, timers [4]*timer.Timer) *IOReg {
+func NewIOReg(irq *irq.IRQ, ppu *ppu.PPU, apu *apu.APU, dma [4]*dma.Channel, input *input.Input, timers [4]*timer.Timer) *IOReg {
 	return &IOReg{
 		IRQ:    irq,
 		PPU:    ppu,
+		APU:    apu,
 		DMA:    dma,
 		Input:  input,
 		Timers: timers,
@@ -52,6 +55,48 @@ func (r *IOReg) Read8(addr uint32) byte {
 	case 0xE <= addr && addr < 0x10: // BG3CNT
 		b := (addr - 0xE) * 8
 		return byte((r.PPU.BGCNT[3] >> b) & 0xFF)
+	case 0x60 <= addr && addr < 0x62: // SOUND1CNT_L
+		b := (addr - 0x60) * 8
+		return byte((r.APU.Channel1.CNT_L >> b) & 0xFF)
+	case 0x62 <= addr && addr < 0x64: // SOUND1CNT_H
+		b := (addr - 0x62) * 8
+		return byte((r.APU.Channel1.CNT_H >> b) & 0xFF)
+	case 0x64 <= addr && addr < 0x66: // SOUND1CNT_X
+		b := (addr - 0x64) * 8
+		return byte((r.APU.Channel1.CNT_X >> b) & 0xFF)
+	case 0x68 <= addr && addr < 0x6A: // SOUND2CNT_L
+		b := (addr - 0x68) * 8
+		return byte((r.APU.Channel2.CNT_L >> b) & 0xFF)
+	case 0x6C <= addr && addr < 0x6E: // SOUND2CNT_H
+		b := (addr - 0x6C) * 8
+		return byte((r.APU.Channel2.CNT_H >> b) & 0xFF)
+	case 0x70 <= addr && addr < 0x72: // SOUND3CNT_L
+		b := (addr - 0x70) * 8
+		return byte((r.APU.Channel3.CNT_L >> b) & 0xFF)
+	case 0x72 <= addr && addr < 0x74: // SOUND3CNT_H
+		b := (addr - 0x72) * 8
+		return byte((r.APU.Channel3.CNT_H >> b) & 0xFF)
+	case 0x74 <= addr && addr < 0x76: // SOUND3CNT_X
+		b := (addr - 0x74) * 8
+		return byte((r.APU.Channel3.CNT_X >> b) & 0xFF)
+	case 0x78 <= addr && addr < 0x7A: // SOUND4CNT_L
+		b := (addr - 0x78) * 8
+		return byte((r.APU.Channel4.CNT_L >> b) & 0xFF)
+	case 0x7C <= addr && addr < 0x7E: // SOUND4CNT_H
+		b := (addr - 0x7C) * 8
+		return byte((r.APU.Channel4.CNT_H >> b) & 0xFF)
+	case 0x90 <= addr && addr < 0xA0: // WAVE_RAM
+		index := addr - 0x90
+		if (r.APU.Channel3.CNT_L & (1 << 6)) == 0 {
+			index += 16
+		}
+		return r.APU.Channel3.RAM[index]
+	case 0x80 <= addr && addr < 0x82: // SOUNDCNT_L
+		b := (addr - 0x80) * 8
+		return byte((r.APU.SOUNDCNT_L >> b) & 0xFF)
+	case 0x82 <= addr && addr < 0x84: // SOUNDCNT_H
+		b := (addr - 0x82) * 8
+		return byte((r.APU.SOUNDCNT_H >> b) & 0xFF)
 	case 0xBA <= addr && addr < 0xBC: // DMA0CNT_H
 		b := (addr - 0xBA) * 8
 		return byte((r.DMA[0].CNT_H >> b) & 0xFF)
@@ -252,6 +297,101 @@ func (r *IOReg) Commit() {
 	if mask := r.getMask16(0x26); mask != 0 { // BG2PD
 		value := r.readBuffer16(0x26) & mask
 		r.PPU.BG_PD[2] = value
+	}
+	if mask := r.getMask16(0x60); mask != 0 { // SOUND1CNT_L
+		value := r.readBuffer16(0x60) & mask
+		r.APU.Channel1.CNT_L = (r.APU.Channel1.CNT_L & ^mask) | value
+	}
+	if mask := r.getMask16(0x62); mask != 0 { // SOUND1CNT_H
+		value := r.readBuffer16(0x62) & mask
+		r.APU.Channel1.CNT_H = (r.APU.Channel1.CNT_H & ^mask) | value
+	}
+	if mask := r.getMask16(0x64); mask != 0 { // SOUND1CNT_X
+		value := r.readBuffer16(0x64) & mask
+		r.APU.Channel1.CNT_X = (r.APU.Channel1.CNT_X & ^mask) | value
+		if (value & (1 << 15)) != 0 {
+			r.APU.Channel1.Start()
+		}
+	}
+	if mask := r.getMask16(0x68); mask != 0 { // SOUND2CNT_L
+		value := r.readBuffer16(0x68) & mask
+		r.APU.Channel2.CNT_L = (r.APU.Channel2.CNT_L & ^mask) | value
+	}
+	if mask := r.getMask16(0x6C); mask != 0 { // SOUND2CNT_H
+		value := r.readBuffer16(0x6C) & mask
+		r.APU.Channel2.CNT_H = (r.APU.Channel2.CNT_H & ^mask) | value
+		if (value & (1 << 15)) != 0 {
+			r.APU.Channel2.Start()
+		}
+	}
+	if mask := r.getMask16(0x70); mask != 0 { // SOUND3CNT_L
+		value := r.readBuffer16(0x70) & mask
+		r.APU.Channel3.CNT_L = (r.APU.Channel3.CNT_L & ^mask) | value
+	}
+	if mask := r.getMask16(0x72); mask != 0 { // SOUND3CNT_H
+		value := r.readBuffer16(0x72) & mask
+		r.APU.Channel3.CNT_H = (r.APU.Channel3.CNT_H & ^mask) | value
+	}
+	if mask := r.getMask16(0x74); mask != 0 { // SOUND3CNT_X
+		value := r.readBuffer16(0x74) & mask
+		r.APU.Channel3.CNT_X = (r.APU.Channel3.CNT_X & ^mask) | value
+		if (value & (1 << 15)) != 0 {
+			r.APU.Channel3.Start()
+		}
+	}
+	if mask := r.getMask16(0x78); mask != 0 { // SOUND4CNT_L
+		value := r.readBuffer16(0x78) & mask
+		r.APU.Channel4.CNT_L = (r.APU.Channel4.CNT_L & ^mask) | value
+	}
+	if mask := r.getMask16(0x7C); mask != 0 { // SOUND4CNT_H
+		value := r.readBuffer16(0x7C) & mask
+		r.APU.Channel4.CNT_H = (r.APU.Channel4.CNT_H & ^mask) | value
+		if (value & (1 << 15)) != 0 {
+			r.APU.Channel4.Start()
+		}
+	}
+	for index := 0; index < 16; index++ {
+		if r.changed[0x90+index] {
+			if (r.APU.Channel3.CNT_L & (1 << 6)) == 0 {
+				r.APU.Channel3.RAM[16+index] = r.buffer[0x90+index]
+			} else {
+				r.APU.Channel3.RAM[index] = r.buffer[0x90+index]
+			}
+		}
+	}
+	if mask := r.getMask16(0x80); mask != 0 { // SOUNDCNT_L
+		value := r.readBuffer16(0x80) & mask
+		r.APU.SOUNDCNT_L = (r.APU.SOUNDCNT_L & ^mask) | value
+	}
+	if mask := r.getMask16(0x82); mask != 0 { // SOUNDCNT_H
+		value := r.readBuffer16(0x82) & mask
+		r.APU.SOUNDCNT_H = (r.APU.SOUNDCNT_H & ^mask) | value
+		if (value & (1 << 11)) != 0 {
+			r.APU.FIFOReset(0)
+		}
+		if (value & (1 << 15)) != 0 {
+			r.APU.FIFOReset(1)
+		}
+	}
+	if mask := r.getMask16(0xA0); mask != 0 { // FIFO_A_L
+		value := r.readBuffer16(0xA0) & mask
+		r.APU.FIFOPush(0, byte(value&0xFF))
+		r.APU.FIFOPush(0, byte((value>>8)&0xFF))
+	}
+	if mask := r.getMask16(0xA2); mask != 0 { // FIFO_A_H
+		value := r.readBuffer16(0xA2) & mask
+		r.APU.FIFOPush(0, byte(value&0xFF))
+		r.APU.FIFOPush(0, byte((value>>8)&0xFF))
+	}
+	if mask := r.getMask16(0xA4); mask != 0 { // FIFO_B_L
+		value := r.readBuffer16(0xA4) & mask
+		r.APU.FIFOPush(1, byte(value&0xFF))
+		r.APU.FIFOPush(1, byte((value>>8)&0xFF))
+	}
+	if mask := r.getMask16(0xA6); mask != 0 { // FIFO_B_H
+		value := r.readBuffer16(0xA6) & mask
+		r.APU.FIFOPush(1, byte(value&0xFF))
+		r.APU.FIFOPush(1, byte((value>>8)&0xFF))
 	}
 	if mask := r.getMask32(0xB0); mask != 0 { // DMA0SAD
 		value := r.readBuffer32(0xB0) & mask

@@ -10,6 +10,7 @@ const (
 	Immediate
 	VBlank
 	HBlank
+	SoundFIFO
 )
 
 const (
@@ -138,6 +139,10 @@ func (ch *Channel) LoadDAD() {
 }
 
 func (ch *Channel) LoadWordCount() {
+	if ch.Cond == SoundFIFO {
+		ch.wordCount = 4
+		return
+	}
 	ch.wordCount = int(ch.CNT_L)
 	if ch.wordCount == 0 {
 		if ch.index < 3 {
@@ -156,12 +161,16 @@ func (ch *Channel) Load() {
 		ch.Cond = VBlank
 	case 0x2:
 		ch.Cond = HBlank
+	case 0x3:
+		if 1 <= ch.index && ch.index <= 2 {
+			ch.Cond = SoundFIFO
+		}
 	}
 
-	if (ch.CNT_H & (1 << 10)) == 0 {
-		ch.wordSize = 2
-	} else {
+	if ch.Cond == SoundFIFO || (ch.CNT_H&(1<<10)) != 0 {
 		ch.wordSize = 4
+	} else {
+		ch.wordSize = 2
 	}
 
 	ch.LoadSAD()
@@ -170,7 +179,11 @@ func (ch *Channel) Load() {
 	ch.LoadWordCount()
 
 	ch.srcAddrCnt = int((ch.CNT_H >> 7) & 0x3)
-	ch.dstAddrCnt = int((ch.CNT_H >> 5) & 0x3)
+	if ch.Cond == SoundFIFO {
+		ch.dstAddrCnt = 2 // Fixed
+	} else {
+		ch.dstAddrCnt = int((ch.CNT_H >> 5) & 0x3)
+	}
 	ch.repeat = (ch.CNT_H & (1 << 9)) != 0
 	ch.triggerIRQ = (ch.CNT_H & (1 << 14)) != 0
 }

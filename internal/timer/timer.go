@@ -1,6 +1,9 @@
 package timer
 
-import "github.com/Div9851/gba-go/internal/irq"
+import (
+	"github.com/Div9851/gba-go/internal/apu"
+	"github.com/Div9851/gba-go/internal/irq"
+)
 
 type Timer struct {
 	index   int
@@ -8,13 +11,15 @@ type Timer struct {
 	TMCNT_H uint16
 	reload  uint16
 	IRQ     *irq.IRQ
+	APU     *apu.APU
 	cycles  int
 	Next    *Timer
 }
 
-func NewTimer(index int, irq *irq.IRQ) *Timer {
+func NewTimer(index int, irq *irq.IRQ, apu *apu.APU) *Timer {
 	return &Timer{
 		IRQ: irq,
+		APU: apu,
 	}
 }
 
@@ -59,6 +64,9 @@ func (tm *Timer) Tick() {
 	if tm.TMCNT_L == 0xFFFF {
 		if (tm.TMCNT_H & (1 << 6)) != 0 {
 			tm.IRQ.IF |= 1 << (3 + tm.index)
+		}
+		if 0 <= tm.index && tm.index <= 1 {
+			tm.APU.TimerTick(tm.index)
 		}
 		tm.TMCNT_L = tm.reload
 		if tm.Next != nil && (tm.Next.TMCNT_H&(1<<2)) != 0 {
