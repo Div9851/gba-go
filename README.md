@@ -26,7 +26,7 @@ make run
 
 ## Development Status
 
-Currently under development.
+The core components have been implemented, allowing for gameplay of titles such as Pokémon Emerald, Kirby: Nightmare in Dream Land, and more.
 
 ## References
 
